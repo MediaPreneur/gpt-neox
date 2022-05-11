@@ -8,8 +8,9 @@ import subprocess
 
 def _get_cuda_bare_metal_version(cuda_dir):
     raw_output = subprocess.check_output(
-        [cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True
+        [f"{cuda_dir}/bin/nvcc", "-V"], universal_newlines=True
     )
+
     output = raw_output.split()
     release_idx = output.index("release") + 1
     release = output[release_idx].split(".")
@@ -23,9 +24,7 @@ srcpath = Path(__file__).parent.absolute()
 cc_flag = []
 _, bare_metal_major, _ = _get_cuda_bare_metal_version(cpp_extension.CUDA_HOME)
 if int(bare_metal_major) >= 11:
-    cc_flag.append("-gencode")
-    cc_flag.append("arch=compute_80,code=sm_80")
-
+    cc_flag.extend(("-gencode", "arch=compute_80,code=sm_80"))
 nvcc_flags = [
     "-O3",
     "-gencode",

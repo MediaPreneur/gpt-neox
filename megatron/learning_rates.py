@@ -53,7 +53,7 @@ class AnnealingLR(object):
         # Set the learning rate
         self.step(self.num_iters)
 
-        print_rank_0("> learning rate decay style: {}".format(self.decay_style))
+        print_rank_0(f"> learning rate decay style: {self.decay_style}")
 
     def get_lr(self):
         """Learning rate decay functions from:
@@ -90,7 +90,7 @@ class AnnealingLR(object):
             group["lr"] = new_lr
 
     def state_dict(self):
-        state_dict = {
+        return {
             "start_lr": self.start_lr,
             "warmup_iter": self.warmup_iter,
             "num_iters": self.num_iters,
@@ -98,21 +98,20 @@ class AnnealingLR(object):
             "end_iter": self.end_iter,
             "min_lr": self.min_lr,
         }
-        return state_dict
 
     def _check_and_set(self, cls_value, sd_value, name):
         """Auxiliary function for checking the values in the checkpoint and
         setting them."""
         if self.override_lr_scheduler:
-            print_rank_0(" > overriding {} value to {}".format(name, cls_value))
+            print_rank_0(f" > overriding {name} value to {cls_value}")
             return cls_value
 
         if not self.use_checkpoint_lr_scheduler:
-            assert cls_value == sd_value, (
-                "AnnealingLR: class input value"
-                "and checkpoint values for {} do not match".format(name)
-            )
-        print_rank_0(" > using checkpoint value {} for {}".format(sd_value, name))
+            assert (
+                cls_value == sd_value
+            ), f"AnnealingLR: class input valueand checkpoint values for {name} do not match"
+
+        print_rank_0(f" > using checkpoint value {sd_value} for {name}")
         return sd_value
 
     def load_state_dict(self, sd):

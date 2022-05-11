@@ -110,7 +110,7 @@ def get_model(model_type):
     if model_type == "GPT2":
         from pretrain_gpt2 import model_provider
     else:
-        raise Exception("unrecognized model type: {}".format(model_type))
+        raise Exception(f"unrecognized model type: {model_type}")
 
     model = model_provider()
     model = model.half()
@@ -162,7 +162,7 @@ def test_split_merge():
     merge_partitions(merged, partitions, partition_dim, stride)
 
     max_error = (merged - tensor).abs().max()
-    print("  > max error (should be zero): {}".format(max_error))
+    print(f"  > max error (should be zero): {max_error}")
 
 
 def get_mp_merge_args(parser):
@@ -190,16 +190,14 @@ def main():
     tokenizer = rebuild_tokenizer(args)
 
     print("\n merging model parallel partitions ...")
-    print(" > number of partitions: {}".format(orig_model_parallel_size))
-    print(" > checkpoint path: {}".format(args.load))
+    print(f" > number of partitions: {orig_model_parallel_size}")
+    print(f" > checkpoint path: {args.load}")
     print(" > model parameters:")
-    print("    number of tokens ................ {} ".format(tokenizer.vocab_size))
-    print("    number of layers ................ {}".format(args.num_layers))
-    print("    hidden sise ..................... {}".format(args.hidden_size))
-    print("    number of attention heads ....... {}".format(args.num_attention_heads))
-    print(
-        "    maximum position embeddings ..... {}".format(args.max_position_embeddings)
-    )
+    print(f"    number of tokens ................ {tokenizer.vocab_size} ")
+    print(f"    number of layers ................ {args.num_layers}")
+    print(f"    hidden sise ..................... {args.hidden_size}")
+    print(f"    number of attention heads ....... {args.num_attention_heads}")
+    print(f"    maximum position embeddings ..... {args.max_position_embeddings}")
 
     # Full model.
     print("> building the full model ...")
@@ -216,7 +214,7 @@ def main():
     for rank in range(args.model_parallel_size):
         mpu.initialize.set_model_parallel_rank(rank)
         checkpoint_name, iteration = get_parallel_checkpoint_name(args.load)
-        print("> loading {} ...".format(checkpoint_name))
+        print(f"> loading {checkpoint_name} ...")
         model_ = get_model(model_type)
         sd = torch.load(checkpoint_name, map_location="cpu")
         model_.load_state_dict(sd["model"])
@@ -230,36 +228,31 @@ def main():
 
             # Get the params and check names.
             name, merged_param = next(merged_params_gen)
-            print(" > working on {} ...".format(name))
+            print(f" > working on {name} ...")
             print(
-                "     merged         type: {}, size: {}".format(
-                    merged_param.dtype, list(merged_param.size())
-                )
+                f"     merged         type: {merged_param.dtype}, size: {list(merged_param.size())}"
             )
+
             partitions_param = []
             for rank, partition_params_gen in enumerate(partitions_params_gen):
                 partition_name, partition_param = next(partition_params_gen)
                 assert partition_name == name
                 partitions_param.append(partition_param)
                 print(
-                    "     partition {}    type: {}, size: {}".format(
-                        rank, partition_param.dtype, list(partition_param.size())
-                    )
+                    f"     partition {rank}    type: {partition_param.dtype}, size: {list(partition_param.size())}"
                 )
+
 
             # For the non-parallel parameters, simply copy the rank 0 values.
             if not hasattr(merged_param, "model_parallel"):
                 print("     none-parallel parameter, simple copy from rank 0")
                 with torch.no_grad():
                     merged_param.data.copy_(partitions_param[0].data)
-            # For parallel parameters, merge the values
             else:
                 print(
-                    "     parallel parameter merge with stride {} along "
-                    "dimention {}".format(
-                        merged_param.stride, merged_param.partition_dim
-                    )
+                    f"     parallel parameter merge with stride {merged_param.stride} along dimention {merged_param.partition_dim}"
                 )
+
                 merge_partitions(
                     merged_param,
                     partitions_param,
@@ -279,7 +272,7 @@ def main():
     merged_path = os.path.join(args.load, "merged")
     checkpoint_name = get_checkpoint_name(merged_path, iteration)
     ensure_directory_exists(checkpoint_name)
-    print("> saving merged model to {}".format(checkpoint_name))
+    print(f"> saving merged model to {checkpoint_name}")
     torch.save(sd, checkpoint_name)
 
     print("done :-)")

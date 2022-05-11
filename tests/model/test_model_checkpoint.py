@@ -101,15 +101,13 @@ def run_checkpoint_test(yaml_list=None, param_dict=None):
     ), "run_checkpoint_test() iteration loaded from checkpoint correct"
 
     # check all weight groups are the same
-    for idx, ((n1, p1), (n2, p2)) in enumerate(
-        zip(
+    for (n1, p1), (n2, p2) in zip(
             list(model.module.named_parameters()),
             list(reloaded_model.module.named_parameters()),
-        )
-    ):
+        ):
         assert n1 == n2
         params_equal = (p1 == p2).all().item()
-        assert params_equal, "run_checkpoint_test() params equal: " + str(n1)
+        assert params_equal, f"run_checkpoint_test() params equal: {str(n1)}"
 
     if torch.distributed.get_world_size() == 1 or torch.distributed.get_rank() == 0:
         clear_test_dirs()

@@ -17,10 +17,9 @@ def load_jsonl(input_path, quiet=True) -> list:
     """
     data = []
     with open(input_path, "r", encoding="utf-8") as f:
-        for line in f:
-            data.append(json.loads(line.rstrip("\n|\r")))
+        data.extend(json.loads(line.rstrip("\n|\r")) for line in f)
     if not quiet:
-        print("Loaded {} records from {}".format(len(data), input_path))
+        print(f"Loaded {len(data)} records from {input_path}")
     return data
 
 

@@ -134,27 +134,26 @@ def forward_model(model, model_inputs, is_pipe_parallel=False) -> torch.Tensor:
     # we need to forward a pipe model differently to a normal model
     if not is_pipe_parallel:
         return model.module(model_inputs)
-    else:
-        # we need to format inputs this way because:
-        # a) deepspeed pipeline only accepts iterables
-        # b) deepspeed pipeline *requires* that you pass in labels for the loss, it's not easy to get around this
-        # so we wrap the inputs in an iterable, and pad them (because internally, we get labels as inputs[:, 1:] and inputs as inputs[:, :-1])
-        model_inputs = iter([{"text": F.pad(model_inputs[0], pad=(0, 1))}])
+    # we need to format inputs this way because:
+    # a) deepspeed pipeline only accepts iterables
+    # b) deepspeed pipeline *requires* that you pass in labels for the loss, it's not easy to get around this
+    # so we wrap the inputs in an iterable, and pad them (because internally, we get labels as inputs[:, 1:] and inputs as inputs[:, :-1])
+    model_inputs = iter([{"text": F.pad(model_inputs[0], pad=(0, 1))}])
 
-        # set num microbatches to 1 at inference time
-        micro_batches_before = model.micro_batches
-        model.micro_batches = 1
+    # set num microbatches to 1 at inference time
+    micro_batches_before = model.micro_batches
+    model.micro_batches = 1
 
-        # deepspeed sends metadata across pipeline stages only once in the first step, then assumes it will stay
-        # constant. In inference, the metadata of the tensors being sent across pipe stages may change, so we need to set
-        # these two flags in order for deepspeed to send the metadata every step, otherwise torch.distributed hangs
-        # silently. Fun stuff.
-        model.first_output_send = True
-        model.pipe_recv_buf = None
+    # deepspeed sends metadata across pipeline stages only once in the first step, then assumes it will stay
+    # constant. In inference, the metadata of the tensors being sent across pipe stages may change, so we need to set
+    # these two flags in order for deepspeed to send the metadata every step, otherwise torch.distributed hangs
+    # silently. Fun stuff.
+    model.first_output_send = True
+    model.pipe_recv_buf = None
 
-        loss, logits = model.eval_batch(model_inputs, return_logits=True)
-        model.micro_batches = micro_batches_before
-        return logits
+    loss, logits = model.eval_batch(model_inputs, return_logits=True)
+    model.micro_batches = micro_batches_before
+    return logits
 
 
 def broadcast_terminate_signal(terminate_runs: int):
@@ -575,24 +574,24 @@ def generate_samples_input_from_file(
     """
     # Read the sample file
     print_rank_0(
-        "generate_samples_input_from_file() loading input from {}".format(input_file)
+        f"generate_samples_input_from_file() loading input from {input_file}"
     )
+
     with open(input_file, "r") as f:
         prompts = f.readlines()
     prompts = [p.strip() for p in prompts]
     prompts = [p for p in prompts if len(p) > 0]
     print_rank_0(
-        "generate_samples_input_from_file() prompts loaded: {}".format(len(prompts))
+        f"generate_samples_input_from_file() prompts loaded: {len(prompts)}"
     )
 
-    if is_mp_rank_0():
-        if output_file is None:
-            output_file = str(input_file) + ".output.jsonl"
-            print_rank_0(
-                "generate_samples_input_from_file() setting default output file to {}".format(
-                    output_file
-                )
-            )
+
+    if is_mp_rank_0() and output_file is None:
+        output_file = f"{str(input_file)}.output.jsonl"
+        print_rank_0(
+            f"generate_samples_input_from_file() setting default output file to {output_file}"
+        )
+
 
     print_rank_0("generate_samples_input_from_file() generating...")
     generated_texts = generate_samples_from_prompt(
@@ -671,11 +670,10 @@ def generate_samples_unconditional(
         top_p=top_p,
     )
 
-    if is_mp_rank_0():
-        if output_file is not None:
-            with open(output_file, "w") as f_out:
-                for item in generated_texts:
-                    f_out.write(json.dumps(item) + "\n")
+    if is_mp_rank_0() and output_file is not None:
+        with open(output_file, "w") as f_out:
+            for item in generated_texts:
+                f_out.write(json.dumps(item) + "\n")
     print_rank_0("generate_samples_unconditional() done")
     return generated_texts
 
@@ -770,6 +768,6 @@ def generate_samples_interactive(
                     ]
                 )
                 generated_text = neox_args.tokenizer.detokenize(generated_tokens)
-                print_rank_0("Generated Text: " + generated_text)
+                print_rank_0(f"Generated Text: {generated_text}")
         if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
             _ = input("\n<press enter to continue>")

@@ -68,19 +68,16 @@ def to_md(docs, intro_str=""):
     """
     Writes the docs dictionary to markdown format
     """
-    lines = []
-    lines.append(intro_str)
+    lines = [intro_str]
     for name, doc in docs.items():
         lines.append(f"## {name}")
-        lines.append(f"{doc['doc']}")
-        lines.append("")
+        lines.extend((f"{doc['doc']}", ""))
         for field_name, field_def in doc["attributes"].items():
             # attribute name and type
             lines.append(f"- **{field_name}**: {field_def['type']}")
             # default value
             lines.append(f"    Default = {str(field_def['default'])}")
-            lines.append(f"    {field_def['doc']}")
-            lines.append("")
+            lines.extend((f"    {field_def['doc']}", ""))
     return "\n\n".join(lines)
 
 

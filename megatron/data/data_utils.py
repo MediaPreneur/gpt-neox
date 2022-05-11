@@ -52,8 +52,8 @@ def build_the_dataset(
     indexed_dataset = make_indexed_dataset(data_prefix, data_impl, skip_warmup)
 
     total_num_of_documents = indexed_dataset.sizes.shape[0]
-    print_rank_0("    {}:".format(name))
-    print_rank_0("     no. of documents:{}".format(total_num_of_documents))
+    print_rank_0(f"    {name}:")
+    print_rank_0(f"     no. of documents:{total_num_of_documents}")
     dataset = None
     documents = np.arange(start=0, stop=total_num_of_documents, step=1, dtype=np.int32)
     dataset = GPT2Dataset(
@@ -90,12 +90,9 @@ def build_train_valid_test_datasets(
     print_rank_0(" > dataset split:")
 
     def print_split_stats(name, index):
-        print_rank_0("    {}:".format(name))
+        print_rank_0(f"    {name}:")
         print_rank_0(
-            "     document indices in [{}, {}) total of {} "
-            "documents".format(
-                splits[index], splits[index + 1], splits[index + 1] - splits[index]
-            )
+            f"     document indices in [{splits[index]}, {splits[index + 1]}) total of {splits[index + 1] - splits[index]} documents"
         )
 
     print_split_stats("train", 0)
@@ -144,8 +141,11 @@ def get_train_valid_test_split_(splits_string, size):
     assert splits_sum > 0.0
     splits = [split / splits_sum for split in splits]
     splits_index = [0]
-    for index, split in enumerate(splits):
-        splits_index.append(splits_index[index] + int(round(split * float(size))))
+    splits_index.extend(
+        splits_index[index] + int(round(split * float(size)))
+        for index, split in enumerate(splits)
+    )
+
     diff = splits_index[-1] - size
     for index in range(1, len(splits_index)):
         splits_index[index] -= diff
@@ -164,9 +164,10 @@ def get_normalized_weights_and_num_samples(
     # Add 0.5% (the 1.005 factor) so in case the blending dataset does
     # not uniformly distribute the number of samples, we still have
     # samples left to feed to the network.
-    weighted_num_samples = []
-    for weight in weights:
-        weighted_num_samples.append(int(math.ceil(num_samples * weight * 1.005)))
+    weighted_num_samples = [
+        int(math.ceil(num_samples * weight * 1.005)) for weight in weights
+    ]
+
     return weights, weighted_num_samples
 
 
@@ -423,10 +424,9 @@ def build_train_valid_test_data_iterators(neox_args):
             neox_args.iteration * neox_args.gradient_accumulation_steps
         ) % len(train_dataloader)
         print_rank_0(
-            "setting training data start iteration to {}".format(
-                train_dataloader.batch_sampler.start_iter
-            )
+            f"setting training data start iteration to {train_dataloader.batch_sampler.start_iter}"
         )
+
     if valid_dataloader is not None:
         start_iter_val = (
             (neox_args.iteration * neox_args.gradient_accumulation_steps)
@@ -436,10 +436,9 @@ def build_train_valid_test_data_iterators(neox_args):
             valid_dataloader
         )
         print_rank_0(
-            "setting validation data start iteration to {}".format(
-                valid_dataloader.batch_sampler.start_iter
-            )
+            f"setting validation data start iteration to {valid_dataloader.batch_sampler.start_iter}"
         )
+
 
     # Build iterators.
     if train_dataloader is not None:
@@ -452,11 +451,7 @@ def build_train_valid_test_data_iterators(neox_args):
     else:
         valid_data_iterator = None
 
-    if test_dataloader is not None:
-        test_data_iterator = iter(test_dataloader)
-    else:
-        test_data_iterator = None
-
+    test_data_iterator = None if test_dataloader is None else iter(test_dataloader)
     return train_data_iterator, valid_data_iterator, test_data_iterator
 
 

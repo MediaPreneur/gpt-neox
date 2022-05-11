@@ -23,13 +23,13 @@ class SM3(Optimizer):
     """
 
     def __init__(self, params, lr=0.1, momentum=0.0, beta=0.0, eps=1e-30):
-        if not 0.0 <= lr:
+        if lr < 0.0:
             raise ValueError("Invalid learning rate: {0}".format(lr))
         if not 0.0 <= momentum < 1.0:
             raise ValueError("Invalid momentum: {0}".format(momentum))
         if not 0.0 <= beta < 1.0:
             raise ValueError("Invalid beta: {0}".format(beta))
-        if not 0.0 <= eps:
+        if eps < 0.0:
             raise ValueError("Invalid eps: {0}".format(eps))
 
         defaults = {"lr": lr, "momentum": momentum, "beta": beta, "eps": eps}
@@ -161,7 +161,7 @@ def _compute_update(beta, acc_list, grad):
 
 def _key(i):
     # Returns key used for accessing accumulators
-    return "accumulator_" + str(i)
+    return f"accumulator_{str(i)}"
 
 
 def _add_initial_accumulators(state, grad):
@@ -270,7 +270,7 @@ class madgrad_wd(torch.optim.Optimizer):
         if weight_decay < 0:
             raise ValueError(f"Weight decay {weight_decay} must be non-negative")
         if eps < 0:
-            raise ValueError(f"Eps must be non-negative")
+            raise ValueError("Eps must be non-negative")
 
         defaults = dict(lr=lr, eps=eps, momentum=momentum, weight_decay=weight_decay)
         super().__init__(params, defaults)

@@ -32,7 +32,7 @@ def load_fused_kernels():
     try:
         import scaled_upper_triang_masked_softmax_cuda
         import scaled_masked_softmax_cuda
-    except (ImportError, ModuleNotFoundError):
+    except ImportError:
         print("\n")
         print("=" * 100)
         print(f'ERROR: Fused kernels configured but not installed. Please run `python {str(srcpath / "setup.py")} install` to install them')

@@ -100,9 +100,7 @@ class Embedding(torch.nn.Module):
         if self.tokentype_embeddings is not None:
             raise Exception("tokentype embeddings is already initialized")
         if torch.distributed.get_rank() == 0:
-            print(
-                "adding embedding for {} tokentypes".format(num_tokentypes), flush=True
-            )
+            print(f"adding embedding for {num_tokentypes} tokentypes", flush=True)
         self.num_tokentypes = num_tokentypes
         self.tokentype_embeddings = self.embedding_module(
             num_tokentypes, self.hidden_size

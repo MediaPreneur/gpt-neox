@@ -78,13 +78,12 @@ def get_flops(neox_args, model, iter_time_s):
     world_size = torch.distributed.get_world_size()
     ff = model.total_params * 6
     attn = neox_args.seq_length * neox_args.hidden_size * neox_args.num_layers * 60
-    flops = (
+    return (
         neox_args.train_batch_size
         * neox_args.seq_length
         * (ff + attn)
         / (iter_time_s * world_size)
     )
-    return flops
 
 
 def training_log(

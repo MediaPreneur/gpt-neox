@@ -68,43 +68,39 @@ class GradientNoiseScale:
         self.mpu = mpu
 
     def flatten_grads(self):
-        grads = []
         assert hasattr(
             self.model, "stored_gradients"
         ), "You might need to update DeeperSpeed"
         if self.model.stored_gradients is not None:
+            grads = []
             for g in self.model.stored_gradients:
-                if g is not None and not g.isnan().any() and not g.isinf().any():
-                    g = g.flatten().view(-1, 1)
-                    if self.cpu_offload:
-                        g = g.cpu()
-                    grads.append(g)
-                else:
+                if g is None or g.isnan().any() or g.isinf().any():
                     return None
+                g = g.flatten().view(-1, 1)
+                if self.cpu_offload:
+                    g = g.cpu()
+                grads.append(g)
             if not grads:
                 return None
             return torch.cat(grads)
 
     def _sync_overflow(self, is_overflow):
-        if self.neox_args.is_pipe_parallel:
-            # Since each model parallel GPU carries only part of the model,
-            # make sure overflow flag is synced across all the pipe parallel GPUs
-            overflow_gpu = torch.cuda.ByteTensor([is_overflow])
-            torch.distributed.all_reduce(
-                overflow_gpu,
-                op=torch.distributed.ReduceOp.MAX,
-                group=self.mpu.get_pipe_parallel_group(),
-            )
-            overflow = overflow_gpu[0].item()
-        else:
-            overflow = is_overflow
-        return overflow
+        if not self.neox_args.is_pipe_parallel:
+            return is_overflow
+        # Since each model parallel GPU carries only part of the model,
+        # make sure overflow flag is synced across all the pipe parallel GPUs
+        overflow_gpu = torch.cuda.ByteTensor([is_overflow])
+        torch.distributed.all_reduce(
+            overflow_gpu,
+            op=torch.distributed.ReduceOp.MAX,
+            group=self.mpu.get_pipe_parallel_group(),
+        )
+        return overflow_gpu[0].item()
 
     def _update(self):
 
         grad = self.flatten_grads()
-        is_overflow = self._sync_overflow(grad is None)
-        if is_overflow:
+        if is_overflow := self._sync_overflow(grad is None):
             return
         if self.buffer is None:
             self.buffer = grad
@@ -153,8 +149,7 @@ class GradientNoiseScale:
                 or g_big.isinf().any()
                 or g_big.isnan().any()
             )
-            is_overflow = self._sync_overflow(is_overflow)
-            if is_overflow:
+            if is_overflow := self._sync_overflow(is_overflow):
                 return
 
             # calculate noise / scale
