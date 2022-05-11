@@ -48,15 +48,11 @@ def reduce_losses(losses):
 def report_memory(name):
     """Simple GPU memory report."""
     mega_bytes = 1024.0 * 1024.0
-    string = name + " memory (MB)"
-    string += " | allocated: {}".format(torch.cuda.memory_allocated() / mega_bytes)
-    string += " | max allocated: {}".format(
-        torch.cuda.max_memory_allocated() / mega_bytes
-    )
-    string += " | reserved: {}".format(torch.cuda.memory_reserved() / mega_bytes)
-    string += " | max reserved: {}".format(
-        torch.cuda.max_memory_reserved() / mega_bytes
-    )
+    string = f"{name} memory (MB)"
+    string += f" | allocated: {torch.cuda.memory_allocated() / mega_bytes}"
+    string += f" | max allocated: {torch.cuda.max_memory_allocated() / mega_bytes}"
+    string += f" | reserved: {torch.cuda.memory_reserved() / mega_bytes}"
+    string += f" | max reserved: {torch.cuda.max_memory_reserved() / mega_bytes}"
     print_rank_0(string)
 
 
@@ -186,10 +182,7 @@ def obtain_resource_pool(
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool["localhost"] = device_count
 
-    active_resources = parse_inclusion_exclusion(
-        resource_pool, include_arg, exclude_arg
-    )
-    return active_resources
+    return parse_inclusion_exclusion(resource_pool, include_arg, exclude_arg)
 
 
 def natural_sort(l):
@@ -313,7 +306,7 @@ def expand_attention_types(attention_config, num_layers):
     :return:
     """
     # if only strings are found in the config, we assume it's already expanded
-    if all([isinstance(i, str) for i in attention_config]):
+    if all(isinstance(i, str) for i in attention_config):
         return attention_config
     newlist = []
     for item in attention_config:
@@ -354,35 +347,32 @@ class OverflowMonitor:
 
 
 def get_noise_scale_logger(neox_args):
-    if neox_args.log_gradient_noise_scale:
-        if neox_args.zero_stage >= 1:
-            raise NotImplementedError(
-                "Gradient Noise Scale logging does not work with zero stage 2+, as the "
-                "gradients are distributed across ranks."
-            )
-        noise_scale_logger = GradientNoiseScale(
-            model=model,
-            batch_size_small=neox_args.train_batch_size,
-            n_batches=neox_args.gradient_noise_scale_n_batches,
-            cpu_offload=neox_args.gradient_noise_scale_cpu_offload,
-            neox_args=neox_args,
-            mpu=mpu,
+    if not neox_args.log_gradient_noise_scale:
+        return None
+    if neox_args.zero_stage >= 1:
+        raise NotImplementedError(
+            "Gradient Noise Scale logging does not work with zero stage 2+, as the "
+            "gradients are distributed across ranks."
         )
-    else:
-        noise_scale_logger = None
-    return noise_scale_logger
+    return GradientNoiseScale(
+        model=model,
+        batch_size_small=neox_args.train_batch_size,
+        n_batches=neox_args.gradient_noise_scale_n_batches,
+        cpu_offload=neox_args.gradient_noise_scale_cpu_offload,
+        neox_args=neox_args,
+        mpu=mpu,
+    )
 
 
 def get_total_params(model):
     # Print number of parameters.
     if mpu.get_data_parallel_rank() == 0:
-        params = sum([p.nelement() for p in model.parameters()])
+        params = sum(p.nelement() for p in model.parameters())
         print(
-            " > number of parameters on model parallel rank {}: {}".format(
-                mpu.get_model_parallel_rank(), params
-            ),
+            f" > number of parameters on model parallel rank {mpu.get_model_parallel_rank()}: {params}",
             flush=True,
         )
+
     else:
         params = 0
 
@@ -416,7 +406,7 @@ def setup_for_inference_or_eval(
         "zero_optimization": None,  # disable zero optimization (won't be used in inference, and loading zero optimizer can cause errors)
     }
     if overwrite_values:
-        _overwrite_values.update(overwrite_values)
+        _overwrite_values |= overwrite_values
     neox_args = NeoXArgs.consume_neox_args(overwrite_values=_overwrite_values)
     neox_args.configure_distributed_args()
     neox_args.build_tokenizer()

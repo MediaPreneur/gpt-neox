@@ -124,27 +124,22 @@ def run_train_test(yaml_list=None, param_dict=None):
     from megatron.training import train_step
     from megatron.utils import Timers
 
-    max_steps = 64
-
     model, optimizer, lr_scheduler, args_loaded = model_setup(yaml_list, param_dict)
 
     model.train()
 
     timers = Timers(use_wandb=False, tensorboard_writer=None)
 
-    # generate some random data on which we can overfit
-    # context size of data is model seq_len + 1 in order to compute loss
-    data_list = list()
     context_tokens_tensor = torch.randint(
         0, args_loaded.padded_vocab_size, (4, args_loaded.seq_length + 1)
     ).to(torch.int64)
-    for i in range(max_steps):
-        data_list.append({"text": context_tokens_tensor.clone()})
+    max_steps = 64
+    data_list = [{"text": context_tokens_tensor.clone()} for _ in range(max_steps)]
     data_iterator = iter(data_list)
 
     # run train_step until the loss decreases
-    losses = list()
-    for i in range(max_steps):
+    losses = []
+    for _ in range(max_steps):
         loss_dict, skipped_iter = train_step(
             neox_args=args_loaded,
             timers=timers,
@@ -163,9 +158,10 @@ def run_train_test(yaml_list=None, param_dict=None):
                 return  # all good
 
     # loss should have decreased by now (otherwise increasing the max_steps parameter could have the testcase pass)
-    assert losses[-1] < losses[-2], (
-        "run_train_test() loss going down within " + str(max_steps) + " steps"
-    )
+    assert (
+        losses[-1] < losses[-2]
+    ), f"run_train_test() loss going down within {max_steps} steps"
+
 
     if torch.distributed.get_world_size() == 1 or torch.distributed.get_rank() == 0:
         clear_test_dirs()

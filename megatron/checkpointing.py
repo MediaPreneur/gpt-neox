@@ -42,9 +42,8 @@ def check_checkpoint_args(neox_args, checkpoint_args):
     assert isinstance(checkpoint_args, dict), "args stored in checkpoint is a dict"
     for checkpoint_arg_name, checkpoint_arg_value in checkpoint_args.items():
         args_value = getattr(neox_args, checkpoint_arg_name)
-        error_message = "{} value from checkpoint ({}) is not equal to the currently set argument value ({}).".format(
-            checkpoint_arg_name, checkpoint_arg_value, args_value
-        )
+        error_message = f"{checkpoint_arg_name} value from checkpoint ({checkpoint_arg_value}) is not equal to the currently set argument value ({args_value})."
+
         assert checkpoint_arg_value == args_value, error_message
 
 
@@ -98,17 +97,16 @@ def check_forward_pass(neox_args, model, checkpoint_logits, inference):
     logits = do_forward_pass(neox_args=neox_args, model=model, inference=inference)
 
     # check
-    if (
-        logits is not None and checkpoint_logits is not None
-    ):  # this could be the case for non-final pipeline stages
-        if not (logits == checkpoint_logits).all().item():
-            if mpu.get_data_parallel_rank() == 0:
-                print(
-                    " > WARNING: validate_checkpoint_forward() forward after load of checkpoint does not yield exactly same result"
-                )
-            assert (
-                torch.isclose(logits, checkpoint_logits).all().item()
-            ), "validate_checkpoint_forward() forward after load of checkpoint does not yield a close result"
+    if (logits is not None and checkpoint_logits is not None) and not (
+        logits == checkpoint_logits
+    ).all().item():
+        if mpu.get_data_parallel_rank() == 0:
+            print(
+                " > WARNING: validate_checkpoint_forward() forward after load of checkpoint does not yield exactly same result"
+            )
+        assert (
+            torch.isclose(logits, checkpoint_logits).all().item()
+        ), "validate_checkpoint_forward() forward after load of checkpoint does not yield a close result"
 
 
 def ensure_directory_exists(filename):
@@ -120,10 +118,7 @@ def ensure_directory_exists(filename):
 
 def get_checkpoint_name(checkpoints_path, iteration, release=False, mp_rank=None):
     """A unified checkpoint name."""
-    if release:
-        directory = "release"
-    else:
-        directory = "iter_{:07d}".format(iteration)
+    directory = "release" if release else "iter_{:07d}".format(iteration)
     return os.path.join(
         checkpoints_path,
         directory,
@@ -135,26 +130,27 @@ def get_checkpoint_name(checkpoints_path, iteration, release=False, mp_rank=None
 
 
 def delete_old_checkpoints(save_dir, n_to_keep):
-    if torch.distributed.get_rank() == 0:
-        ckpt_dir_regex = r"global_step[\d]*"
-        if save_dir.endswith("/"):
-            save_dir = save_dir.strip("/")
-        all_ckpts = natural_sort(
-            [
-                i
-                for i in glob(f"{save_dir}/*")
-                if os.path.isdir(i) and re.search(ckpt_dir_regex, i)
-            ]
-        )
-        n_to_delete = len(all_ckpts) - n_to_keep
-        if n_to_delete > 0:
-            to_delete = all_ckpts[:n_to_delete]
-            print(f"WARNING: Deleting old checkpoints: \n\t{', '.join(to_delete)}")
-            for ckpt in to_delete:
-                try:
-                    shutil.rmtree(ckpt)
-                except FileNotFoundError:
-                    pass
+    if torch.distributed.get_rank() != 0:
+        return
+    ckpt_dir_regex = r"global_step[\d]*"
+    if save_dir.endswith("/"):
+        save_dir = save_dir.strip("/")
+    all_ckpts = natural_sort(
+        [
+            i
+            for i in glob(f"{save_dir}/*")
+            if os.path.isdir(i) and re.search(ckpt_dir_regex, i)
+        ]
+    )
+    n_to_delete = len(all_ckpts) - n_to_keep
+    if n_to_delete > 0:
+        to_delete = all_ckpts[:n_to_delete]
+        print(f"WARNING: Deleting old checkpoints: \n\t{', '.join(to_delete)}")
+        for ckpt in to_delete:
+            try:
+                shutil.rmtree(ckpt)
+            except FileNotFoundError:
+                pass
 
 
 def save_ds_checkpoint(iteration, model, neox_args):
@@ -220,43 +216,38 @@ def load_checkpoint(
     neox_args, model, optimizer, lr_scheduler, inference=False, iteration=None
 ):
     """Load a model checkpoint and return the iteration."""
-    if neox_args.deepspeed:
-        load_optim_and_scheduler = (
-            not neox_args.no_load_optim
-        )  # TODO: These should be configured by separate args
-        if neox_args.finetune:
-            load_optim_and_scheduler = False
-        if iteration is not None:
-            tag = f"global_step{iteration}"
-        else:
-            tag = None
-        checkpoint_name, state_dict = model.load_checkpoint(
-            neox_args.load,
-            load_optimizer_states=load_optim_and_scheduler,
-            load_lr_scheduler_states=load_optim_and_scheduler,
-            tag=tag,
-        )
-
-        if checkpoint_name is None:
-            # if an iteration is specified, we want to raise an error here rather than
-            # continuing silently, since we are trying to load a specific checkpoint
-            if iteration is not None:
-                available_checkpoints = sorted(
-                    [
-                        int(i.name.replace("global_step", ""))
-                        for i in Path(neox_args.load).glob("global_step*")
-                    ]
-                )
-                raise ValueError(
-                    f"Unable to load checkpoint for iteration {iteration}. \nAvailable iterations: {pformat(available_checkpoints)}"
-                )
-            if mpu.get_data_parallel_rank() == 0:
-                print("Unable to load checkpoint.")
-
-            return 0  # iteration 0, if not checkpoint loaded
-    else:
+    if not neox_args.deepspeed:
         raise ValueError("Must be using deepspeed to use neox")
 
+    load_optim_and_scheduler = (
+        False if neox_args.finetune else (not neox_args.no_load_optim)
+    )
+
+    tag = f"global_step{iteration}" if iteration is not None else None
+    checkpoint_name, state_dict = model.load_checkpoint(
+        neox_args.load,
+        load_optimizer_states=load_optim_and_scheduler,
+        load_lr_scheduler_states=load_optim_and_scheduler,
+        tag=tag,
+    )
+
+    if checkpoint_name is None:
+        # if an iteration is specified, we want to raise an error here rather than
+        # continuing silently, since we are trying to load a specific checkpoint
+        if iteration is not None:
+            available_checkpoints = sorted(
+                [
+                    int(i.name.replace("global_step", ""))
+                    for i in Path(neox_args.load).glob("global_step*")
+                ]
+            )
+            raise ValueError(
+                f"Unable to load checkpoint for iteration {iteration}. \nAvailable iterations: {pformat(available_checkpoints)}"
+            )
+        if mpu.get_data_parallel_rank() == 0:
+            print("Unable to load checkpoint.")
+
+        return 0  # iteration 0, if not checkpoint loaded
     # Set iteration.
     if neox_args.finetune:
         iteration = 0
@@ -289,13 +280,11 @@ def load_checkpoint(
                 inference=inference,
             )
             print_rank_0(" > validated loaded checkpoint with forward pass ...")
-        else:
-            if mpu.get_data_parallel_rank() == 0:
-                print(
-                    " > WARNING: checkpoint_validation_with_forward_pass is configured but no checkpoint validation data available in checkpoint {}".format(
-                        checkpoint_name
-                    )
-                )
+        elif mpu.get_data_parallel_rank() == 0:
+            print(
+                f" > WARNING: checkpoint_validation_with_forward_pass is configured but no checkpoint validation data available in checkpoint {checkpoint_name}"
+            )
+
 
     # rng states.
     if not neox_args.finetune and not neox_args.no_load_rng:
@@ -307,15 +296,13 @@ def load_checkpoint(
             mpu.get_cuda_rng_tracker().set_states(state_dict["rng_tracker_states"])
         except KeyError:
             print_rank_0(
-                "Unable to load optimizer from checkpoint {}. "
-                "Specify --no-load-rng or --finetune to prevent "
-                "attempting to load the optimizer state, "
-                "exiting ...".format(checkpoint_name)
+                f"Unable to load optimizer from checkpoint {checkpoint_name}. Specify --no-load-rng or --finetune to prevent attempting to load the optimizer state, exiting ..."
             )
+
             sys.exit()
 
     torch.distributed.barrier()
     if mpu.get_data_parallel_rank() == 0:
-        print("  successfully loaded {}".format(checkpoint_name))
+        print(f"  successfully loaded {checkpoint_name}")
 
     return iteration

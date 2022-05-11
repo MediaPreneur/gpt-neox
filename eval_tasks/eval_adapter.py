@@ -59,9 +59,7 @@ class EvalHarnessAdapter(GPT2LM):
         self.is_model_parallel = neox_args.model_parallel_size > 1
         self.is_pipe_parallel = self.model.is_pipe_parallel
         self.is_data_parallel = self.model.is_data_parallel
-        self.is_last_stage = (
-            True if not self.is_pipe_parallel else model.is_last_stage()
-        )  # only the last stage of the pipeline model will receive the logits
+        self.is_last_stage = model.is_last_stage() if self.is_pipe_parallel else True
         self.dp_world_size = mpu.get_data_parallel_world_size()
         self.dp_rank = mpu.get_data_parallel_rank()
         self.dp_group = mpu.get_data_parallel_group()

@@ -67,7 +67,7 @@ def initialize_model_parallel(model_parallel_size, topology=None, fp32_allreduce
     ranks 8 to 15 belong to the second box.
     """
     if torch.distributed.get_rank() == 0:
-        print("> initializing model parallel with size {}".format(model_parallel_size))
+        print(f"> initializing model parallel with size {model_parallel_size}")
     # Get world size and rank. Ensure some consistencies.
     assert torch.distributed.is_initialized()
     world_size = torch.distributed.get_world_size()
@@ -87,7 +87,7 @@ def initialize_model_parallel(model_parallel_size, topology=None, fp32_allreduce
         for dp_group in topology.get_axis_comm_lists("data"):
             group = torch.distributed.new_group(ranks=dp_group)
             if rank == 0:
-                print(f"MPU DP:", dp_group)
+                print("MPU DP:", dp_group)
             if rank in dp_group:
                 _DATA_PARALLEL_GROUP = group
     else:
@@ -103,7 +103,7 @@ def initialize_model_parallel(model_parallel_size, topology=None, fp32_allreduce
         for pp_group in topology.get_axis_comm_lists("pipe"):
             group = torch.distributed.new_group(ranks=pp_group)
             if rank == 0:
-                print(f"MPU PP:", pp_group)
+                print("MPU PP:", pp_group)
             if rank in pp_group:
                 _PIPE_PARALLEL_GROUP = group
 
@@ -115,7 +115,7 @@ def initialize_model_parallel(model_parallel_size, topology=None, fp32_allreduce
         for stage in io_stages:
             io_group.extend(topology.filter_match(pipe=stage, model=0))
         if rank == 0:
-            print(f"MPU IO:", io_group)
+            print("MPU IO:", io_group)
         group = torch.distributed.new_group(ranks=io_group)
         if rank in io_group:
             _IO_PARALLEL_GROUP = group
@@ -132,7 +132,7 @@ def initialize_model_parallel(model_parallel_size, topology=None, fp32_allreduce
             for group_rank in range(world_size):
                 group = torch.distributed.new_group(ranks=[group_rank])
                 if rank == 0:
-                    print(f"MPU MP:", [group_rank])
+                    print("MPU MP:", [group_rank])
                 if rank == group_rank:
                     _MODEL_PARALLEL_GROUP = group
             return
@@ -140,7 +140,7 @@ def initialize_model_parallel(model_parallel_size, topology=None, fp32_allreduce
         for mp_group in topology.get_axis_comm_lists("model"):
             group = torch.distributed.new_group(ranks=mp_group)
             if rank == 0:
-                print(f"MPU MP:", mp_group)
+                print("MPU MP:", mp_group)
             if rank in mp_group:
                 _MODEL_PARALLEL_GROUP = group
 
@@ -158,9 +158,7 @@ def initialize_model_parallel(model_parallel_size, topology=None, fp32_allreduce
 
 def model_parallel_is_initialized():
     """Check if model and data parallel groups are initialized."""
-    if _MODEL_PARALLEL_GROUP is None or _DATA_PARALLEL_GROUP is None:
-        return False
-    return True
+    return _MODEL_PARALLEL_GROUP is not None and _DATA_PARALLEL_GROUP is not None
 
 
 def get_model_parallel_group():
@@ -225,12 +223,11 @@ def get_data_parallel_src_rank():
     if topo is None:
         # we are just using model parallel
         return global_rank % get_model_parallel_world_size()
-    else:
-        # We are using pipeline parallel
-        d = topo.get_axis_comm_lists("data")
-        for l in d:
-            if global_rank in l:
-                return l[0]
+    # We are using pipeline parallel
+    d = topo.get_axis_comm_lists("data")
+    for l in d:
+        if global_rank in l:
+            return l[0]
 
 
 def get_data_parallel_world_size():

@@ -177,10 +177,7 @@ def get_batch(neox_args, data_iterator):
     datatype = torch.int64
 
     # Broadcast data.
-    if data_iterator is not None:
-        data = next(data_iterator)
-    else:
-        data = None
+    data = next(data_iterator) if data_iterator is not None else None
     return _get_batch(
         neox_args=neox_args,
         tokenizer=neox_args.tokenizer,
@@ -258,7 +255,7 @@ def get_model(neox_args, use_cache=False):
 
         # freeze everything but the soft prompt
         for name, param in model.named_parameters():
-            if not "soft_embedding" in name:
+            if "soft_embedding" not in name:
                 param.requires_grad = False
 
     if not neox_args.is_pipe_parallel:
@@ -382,7 +379,7 @@ def get_learning_rate_scheduler(optimizer, neox_args):
     num_iters = max(1, num_iters)
     init_step = 0
     warmup_iter = neox_args.warmup * num_iters
-    lr_scheduler = AnnealingLR(
+    return AnnealingLR(
         optimizer,
         start_lr=neox_args.lr,
         warmup_iter=warmup_iter,
@@ -394,8 +391,6 @@ def get_learning_rate_scheduler(optimizer, neox_args):
         override_lr_scheduler=neox_args.override_lr_scheduler,
     )
 
-    return lr_scheduler
-
 
 def setup_model_and_optimizer(neox_args, use_cache=False, iteration=None):
     """Setup model and optimizer."""
@@ -403,35 +398,35 @@ def setup_model_and_optimizer(neox_args, use_cache=False, iteration=None):
     optimizer, param_groups = get_optimizer(model=model, neox_args=neox_args)
     lr_scheduler = get_learning_rate_scheduler(optimizer=optimizer, neox_args=neox_args)
 
-    if neox_args.deepspeed:
-        print_rank_0("DeepSpeed is enabled.")
-        if neox_args.no_load_optim:
-            assert optimizer is None
-            _model_params = None
-            _lr_scheduler = None
-        else:
-            _model_params = param_groups if optimizer is None else None
-            _lr_scheduler = lr_scheduler
-
-        model, optimizer, _, lr_scheduler = deepspeed.initialize(
-            model=model,
-            optimizer=optimizer,
-            args=neox_args,
-            lr_scheduler=_lr_scheduler,
-            dist_init_required=False,
-            model_parameters=_model_params,
-            config_params=neox_args.deepspeed_config,
-            mpu=mpu if not neox_args.is_pipe_parallel else None,
-        )
-        model.total_params = get_total_params(model.module)
-        print_rank_0(f' > total params: {"{:,}".format(model.total_params)}')
-
-        if neox_args.is_pipe_parallel:
-            model.set_has_attention_mask(True)
-            model.set_batch_fn(partial(get_batch_pipe, neox_args=neox_args))
-    else:
+    if not neox_args.deepspeed:
         raise ValueError("Must be using deepspeed to run neox")
 
+    print_rank_0("DeepSpeed is enabled.")
+    if neox_args.no_load_optim:
+        assert optimizer is None
+        _model_params = None
+        _lr_scheduler = None
+    else:
+        _model_params = param_groups if optimizer is None else None
+        _lr_scheduler = lr_scheduler
+
+    model, optimizer, _, lr_scheduler = deepspeed.initialize(
+        model=model,
+        optimizer=optimizer,
+        args=neox_args,
+        lr_scheduler=_lr_scheduler,
+        dist_init_required=False,
+        model_parameters=_model_params,
+        config_params=neox_args.deepspeed_config,
+        mpu=None if neox_args.is_pipe_parallel else mpu,
+    )
+
+    model.total_params = get_total_params(model.module)
+    print_rank_0(f' > total params: {"{:,}".format(model.total_params)}')
+
+    if neox_args.is_pipe_parallel:
+        model.set_has_attention_mask(True)
+        model.set_batch_fn(partial(get_batch_pipe, neox_args=neox_args))
     if neox_args.load is not None:
         neox_args.iteration = load_checkpoint(
             neox_args=neox_args,
@@ -582,11 +577,7 @@ def train(
 
         # get learning rate (if present) - if doing soft prompt tuning + pipe parallel, you
         # may have no tunable parameters on a specific rank
-        if optimizer.param_groups:
-            lr = optimizer.param_groups[0].get("lr", 0)
-        else:
-            lr = 0
-
+        lr = optimizer.param_groups[0].get("lr", 0) if optimizer.param_groups else 0
         # Logging.
         report_memory_flag = training_log(
             neox_args=neox_args,
@@ -623,7 +614,7 @@ def train(
             and iteration % neox_args.eval_interval == 0
             and neox_args.do_valid
         ):
-            prefix = "iteration {}".format(iteration)
+            prefix = f"iteration {iteration}"
             evaluate_and_print_results(
                 neox_args=neox_args,
                 prefix=prefix,
@@ -640,10 +631,9 @@ def train(
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             rank = torch.distributed.get_rank()
             print_rank_0(
-                "rank: {} | time: {} | exiting the program at iteration {}".format(
-                    rank, time_str, iteration
-                )
+                f"rank: {rank} | time: {time_str} | exiting the program at iteration {iteration}"
             )
+
             sys.exit()
 
     return iteration
@@ -672,9 +662,7 @@ def evaluate(
         while iteration < neox_args.eval_iters:
             iteration += 1
             if verbose and iteration % neox_args.log_interval == 0:
-                print_rank_0(
-                    "Evaluating iter {}/{}".format(iteration, neox_args.eval_iters)
-                )
+                print_rank_0(f"Evaluating iter {iteration}/{neox_args.eval_iters}")
 
             # although we're not accumulating gradients here, we count one iter as train_batch_size_per_gpu * g.a.s
             # to be consistent with deepspeed's pipe parallel engine
@@ -717,11 +705,10 @@ def evaluate(
         )
 
     if neox_args.eval_tasks:
-        eval_results.update(
-            run_eval_harness(
-                model, forward_step_fn, neox_args, eval_tasks=neox_args.eval_tasks
-            ).get("results")
-        )
+        eval_results |= run_eval_harness(
+            model, forward_step_fn, neox_args, eval_tasks=neox_args.eval_tasks
+        ).get("results")
+
     # Move model back to the train mode.
     model.train()
     return eval_results

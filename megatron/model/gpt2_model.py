@@ -66,8 +66,7 @@ def cross_entropy(output, labels, _fp16=False):
     else:
         losses = mpu.vocab_parallel_cross_entropy(output.float().contiguous(), labels)
     loss_mask = loss_mask.view(-1)
-    loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
-    return loss
+    return torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
 
 
 def _pre_transformer_block(args):
@@ -145,8 +144,9 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
             self.specs[idx:idx] = layers
         elif isinstance(layers, list):
             assert all(
-                [hasattr(l, "__call__") for l in layers]
+                hasattr(l, "__call__") for l in layers
             ), "all items in `layers` must be Callables"
+
             self.specs[idx:idx] = layers
         else:
             raise ValueError(
@@ -264,10 +264,9 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
 
         def _logits_helper(embedding, lm_output):
             """Just a wrapper to massage inputs/outputs from pipeline."""
-            logits = parallel_lm_logits(
+            return parallel_lm_logits(
                 lm_output, embedding.word_embeddings_weight, self.parallel_output
             )
-            return logits
 
         if weight_tying:
             self.specs.append(
@@ -355,10 +354,9 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
                 layers.append(Lambda(spec))
             else:
                 raise ValueError(f"Layer number {n} ({spec}) Not recognized")
-        model = SequentialWrapper(
+        return SequentialWrapper(
             layers,
             self.activation_checkpoint_interval,
             self.activation_checkpoint_func,
             parent_class_name=self.__class__.__name__,
         )
-        return model

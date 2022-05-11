@@ -189,12 +189,8 @@ def main():
     output_idx_files = {}
     builders = {}
     for key in args.jsonl_keys:
-        output_bin_files[key] = "{}_{}_{}.bin".format(
-            args.output_prefix, key, "document"
-        )
-        output_idx_files[key] = "{}_{}_{}.idx".format(
-            args.output_prefix, key, "document"
-        )
+        output_bin_files[key] = f"{args.output_prefix}_{key}_document.bin"
+        output_idx_files[key] = f"{args.output_prefix}_{key}_document.idx"
         builders[key] = indexed_dataset.make_builder(
             output_bin_files[key],
             impl=args.dataset_impl,
@@ -224,8 +220,9 @@ def main():
             elapsed = current - proc_start
             mbs = total_bytes_processed / elapsed / 1024 / 1024
             pbar.set_description(
-                f"Processed {i}{'' if args.num_docs is None else '/' + str(args.num_docs)} documents ({i / elapsed} docs/s, {mbs} MB/s)."
+                f"Processed {i}{'' if args.num_docs is None else f'/{str(args.num_docs)}'} documents ({i / elapsed} docs/s, {mbs} MB/s)."
             )
+
             if i != 0:
                 pbar.update(args.log_interval)
 

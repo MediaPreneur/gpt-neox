@@ -119,10 +119,7 @@ def mish(x):
 class GEGLU(torch.nn.Module):
     def __init__(self, neox_args):
         super(GEGLU, self).__init__()
-        if neox_args.onnx_safe:
-            self.activation_func = erf_gelu
-        else:
-            self.activation_func = F.gelu
+        self.activation_func = erf_gelu if neox_args.onnx_safe else F.gelu
 
     def forward(self, x, bias=None):
         x, gate = x.chunk(2, dim=-1)

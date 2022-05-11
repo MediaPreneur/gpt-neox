@@ -27,9 +27,7 @@ def _check_data_types(keys, data, target_dtype):
     for key in keys:
         assert (
             data[key].dtype == target_dtype
-        ), "{} has data type {} which " "is different than {}".format(
-            key, data[key].dtype, target_dtype
-        )
+        ), f"{key} has data type {data[key].dtype} which is different than {target_dtype}"
 
 
 def _build_key_size_numel_dictionaries(keys, data):

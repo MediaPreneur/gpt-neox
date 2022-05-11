@@ -148,7 +148,7 @@ def distributed_test(world_size=2, backend="nccl"):
                     dist_launcher(procs, *func_args, **func_kwargs)
                     time.sleep(0.5)
             else:
-                raise TypeError(f"world_size must be an integer or a list of integers.")
+                raise TypeError("world_size must be an integer or a list of integers.")
 
         return run_func_decorator
 
@@ -249,8 +249,8 @@ def parametrize(
                 to_pop.append(k)
                 assert len(values_separated) == len(keys_split)
                 new_dict = dict(zip(keys_split, values_separated))
-                to_add.update(new_dict)
-        experiment.update(to_add)
+                to_add |= new_dict
+        experiment |= to_add
         for k in to_pop:
             experiment.pop(k)
         base = deepcopy(BASE_CONFIG)

@@ -14,7 +14,7 @@ def run_neox_args_load_test(yaml_files):
     assert isinstance(args_loaded, NeoXArgs)
 
     # initialize an empty config dictionary to be filled by yamls
-    config = dict()
+    config = {}
 
     # iterate of all to be loaded yaml files
     for conf_file_name in yaml_list:

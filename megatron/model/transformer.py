@@ -483,14 +483,15 @@ class ParallelSelfAttention(nn.Module):
         if self.use_cache:
             present = torch.stack((key_layer, value_layer))
 
-        if not self.sparse:
-            context_layer = self.attention(
-                query_layer, key_layer, value_layer, layer_past, attention_mask
-            )
-        else:
-            context_layer = self.sparse_attention(
+        context_layer = (
+            self.sparse_attention(
                 query_layer, key_layer, value_layer, attention_mask
             )
+            if self.sparse
+            else self.attention(
+                query_layer, key_layer, value_layer, layer_past, attention_mask
+            )
+        )
 
         # [b, np, sq, hn] --> [sq, b, np, hn]
         context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
@@ -576,27 +577,27 @@ class ParallelTransformerLayer(nn.Module):
 
     def _get_bias_dropout(self):
         if self.bias_dropout_fusion:
-            fn = (
+            return (
                 bias_dropout_add_fused_train
                 if self.training
                 else bias_dropout_add_fused_inference
             )
+
         else:
-            fn = get_bias_dropout_add(self.training)
-        return fn
+            return get_bias_dropout_add(self.training)
 
     def forward(self, x, attention_mask, layer_past=None):
         layer_past = layer_past if layer_past is not None else self.layer_past
         bias_dropout_fn = self._get_bias_dropout()
+        # pseudocode:
+        # x = x + attn(ln1(x)) + mlp(ln2(x))
+        # this means we can avoid doing the allreduce in the attn / mlp outputs
+        # to save communication time (we can do a single allreduce after we add mlp / attn outputs).
+
+        # attention_output = attn(ln1(x))
+        residual = x
         # x: [b, s, h]
         if self.gpt_j_residual:
-            # pseudocode:
-            # x = x + attn(ln1(x)) + mlp(ln2(x))
-            # this means we can avoid doing the allreduce in the attn / mlp outputs
-            # to save communication time (we can do a single allreduce after we add mlp / attn outputs).
-
-            # attention_output = attn(ln1(x))
-            residual = x
             attention_output, attention_bias = self.attention(
                 self.input_layernorm(x), attention_mask, layer_past=layer_past
             )
@@ -625,12 +626,6 @@ class ParallelTransformerLayer(nn.Module):
             # output = output + residual
             output = residual + self.reduce(output)
         else:
-            # pseudocode:
-            # x = x + attn(ln1(x))
-            # x = x + mlp(ln2(x))
-
-            residual = x
-
             # x = x + attn(ln1(x))
             attention_output, attention_bias = self.attention(
                 self.input_layernorm(x), attention_mask, layer_past=layer_past

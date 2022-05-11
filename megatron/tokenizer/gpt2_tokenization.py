@@ -114,9 +114,7 @@ class GPT2Tokenizer(object):
             if not os.path.exists(special_tokens_file):
                 special_tokens_file = None
             else:
-                logger.info(
-                    "loading special tokens file {}".format(special_tokens_file)
-                )
+                logger.info(f"loading special tokens file {special_tokens_file}")
         # redirect to the cache, if necessary
         try:
             from .file_utils import cached_path
@@ -125,31 +123,22 @@ class GPT2Tokenizer(object):
             resolved_merges_file = cached_path(merges_file, cache_dir=cache_dir)
         except EnvironmentError:
             logger.error(
-                "Model name '{}' was not found in model name list ({}). "
-                "We assumed '{}' was a path or url but couldn't find files {} and {} "
-                "at this path or url.".format(
-                    pretrained_model_name_or_path,
-                    ", ".join(PRETRAINED_VOCAB_ARCHIVE_MAP.keys()),
-                    pretrained_model_name_or_path,
-                    vocab_file,
-                    merges_file,
-                )
+                f"""Model name '{pretrained_model_name_or_path}' was not found in model name list ({", ".join(PRETRAINED_VOCAB_ARCHIVE_MAP.keys())}). We assumed '{pretrained_model_name_or_path}' was a path or url but couldn't find files {vocab_file} and {merges_file} at this path or url."""
             )
+
             return None
         if resolved_vocab_file == vocab_file and resolved_merges_file == merges_file:
-            logger.info("loading vocabulary file {}".format(vocab_file))
-            logger.info("loading merges file {}".format(merges_file))
+            logger.info(f"loading vocabulary file {vocab_file}")
+            logger.info(f"loading merges file {merges_file}")
         else:
             logger.info(
-                "loading vocabulary file {} from cache at {}".format(
-                    vocab_file, resolved_vocab_file
-                )
+                f"loading vocabulary file {vocab_file} from cache at {resolved_vocab_file}"
             )
+
             logger.info(
-                "loading merges file {} from cache at {}".format(
-                    merges_file, resolved_merges_file
-                )
+                f"loading merges file {merges_file} from cache at {resolved_merges_file}"
             )
+
         if (
             pretrained_model_name_or_path
             in PRETRAINED_VOCAB_POSITIONAL_EMBEDDINGS_SIZE_MAP
@@ -167,14 +156,13 @@ class GPT2Tokenizer(object):
             )
         else:
             special_tokens = kwargs.pop("special_tokens", [])
-        tokenizer = cls(
+        return cls(
             resolved_vocab_file,
             resolved_merges_file,
             special_tokens=special_tokens,
             *inputs,
             **kwargs
         )
-        return tokenizer
 
     def __init__(
         self,
@@ -216,11 +204,12 @@ class GPT2Tokenizer(object):
             self.special_tokens = {}
             self.special_tokens_decoder = {}
             return
-        self.special_tokens = dict(
-            (tok, len(self.encoder) + i) for i, tok in enumerate(special_tokens)
-        )
+        self.special_tokens = {
+            tok: len(self.encoder) + i for i, tok in enumerate(special_tokens)
+        }
+
         self.special_tokens_decoder = {v: k for k, v in self.special_tokens.items()}
-        logger.info("Special tokens {}".format(self.special_tokens))
+        logger.info(f"Special tokens {self.special_tokens}")
 
     @lru_cache(maxsize=131072)
     def bpe(self, token):
@@ -269,7 +258,7 @@ class GPT2Tokenizer(object):
                 token = "".join(self.byte_encoder[ord(b)] for b in token)
             else:
                 token = "".join(self.byte_encoder[b] for b in token.encode("utf-8"))
-            bpe_tokens.extend(bpe_token for bpe_token in self.bpe(token).split(" "))
+            bpe_tokens.extend(iter(self.bpe(token).split(" ")))
         return bpe_tokens
 
     def convert_tokens_to_ids(self, tokens):
@@ -289,12 +278,9 @@ class GPT2Tokenizer(object):
                 ids.append(self.encoder.get(token, 0))
         if len(ids) > self.max_len:
             logger.warning(
-                "Token indices sequence length is longer than the specified maximum "
-                " sequence length for this OpenAI GPT model ({} > {}). Running this"
-                " sequence through the model will result in indexing errors".format(
-                    len(ids), self.max_len
-                )
+                f"Token indices sequence length is longer than the specified maximum  sequence length for this OpenAI GPT model ({len(ids)} > {self.max_len}). Running this sequence through the model will result in indexing errors"
             )
+
         return ids
 
     def convert_ids_to_tokens(self, ids, skip_special_tokens=False):
@@ -321,9 +307,7 @@ class GPT2Tokenizer(object):
     def save_vocabulary(self, vocab_path):
         """Save the tokenizer vocabulary and merge files to a directory."""
         if not os.path.isdir(vocab_path):
-            logger.error(
-                "Vocabulary path ({}) should be a directory".format(vocab_path)
-            )
+            logger.error(f"Vocabulary path ({vocab_path}) should be a directory")
             return
         vocab_file = os.path.join(vocab_path, VOCAB_NAME)
         merge_file = os.path.join(vocab_path, MERGES_NAME)
@@ -340,11 +324,9 @@ class GPT2Tokenizer(object):
             ):
                 if index != token_index:
                     logger.warning(
-                        "Saving vocabulary to {}: BPE merge indices are not consecutive."
-                        " Please check that the tokenizer is not corrupted!".format(
-                            merge_file
-                        )
+                        f"Saving vocabulary to {merge_file}: BPE merge indices are not consecutive. Please check that the tokenizer is not corrupted!"
                     )
+
                     index = token_index
                 writer.write(" ".join(bpe_tokens) + "\n")
                 index += 1
@@ -356,11 +338,9 @@ class GPT2Tokenizer(object):
             ):
                 if index != token_index:
                     logger.warning(
-                        "Saving special tokens vocabulary to {}: BPE indices are not consecutive."
-                        " Please check that the tokenizer is not corrupted!".format(
-                            special_tokens_file
-                        )
+                        f"Saving special tokens vocabulary to {special_tokens_file}: BPE indices are not consecutive. Please check that the tokenizer is not corrupted!"
                     )
+
                     index = token_index
                 writer.write(token + "\n")
                 index += 1

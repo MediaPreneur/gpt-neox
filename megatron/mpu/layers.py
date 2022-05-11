@@ -184,9 +184,7 @@ class VocabParallelEmbedding(torch.nn.Module):
         # Mask the output embedding.
         if self.model_parallel_size > 1:
             output_parallel[input_mask, :] = 0.0
-        # Reduce across all the model parallel GPUs.
-        output = reduce_from_model_parallel_region(output_parallel)
-        return output
+        return reduce_from_model_parallel_region(output_parallel)
 
 
 class ParallelRelativePositionBias(torch.nn.Module):
@@ -455,7 +453,7 @@ class ColumnParallelLinear(torch.nn.Module):
         input_parallel = copy_to_model_parallel_region(input_)
         # Matrix multiply.
 
-        bias = self.bias if not self.skip_bias_add else None
+        bias = None if self.skip_bias_add else self.bias
         output_parallel = F.linear(input_parallel, self.weight, bias)
         if self.gather_output:
             # All-gather across the partitions.
@@ -588,10 +586,12 @@ class RowParallelLinear(torch.nn.Module):
         # Matrix multiply.
         output_parallel = F.linear(input_parallel, self.weight)
         # All-reduce across all the partitions.
-        if not self.parallel_output:
-            output_ = reduce_from_model_parallel_region(output_parallel)
-        else:
-            output_ = output_parallel
+        output_ = (
+            output_parallel
+            if self.parallel_output
+            else reduce_from_model_parallel_region(output_parallel)
+        )
+
         if not self.skip_bias_add:
             output = output_ + self.bias if self.bias is not None else output_
             output_bias = None
